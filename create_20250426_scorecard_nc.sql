@@ -1,7 +1,7 @@
 -- This query creates the production table for the NC scorecard, from the source voter registration table
 -- For each new voter file, update source table name
 
-CREATE OR REPLACE TABLE `nc_production.20250503_scorecard_nc` AS
+CREATE OR REPLACE TABLE `nc_production.20250426_scorecard_nc` AS
  
 WITH county_fips_map AS (
   SELECT 'ALAMANCE' AS COUNTY_NAME, '001' AS COUNTY_FIPS UNION ALL
@@ -124,7 +124,7 @@ SELECT
   TRIM(UPPER(county_desc)) AS COUNTY_NAME,
   NULL AS SCHOOL_DISTRICT_CODE,
   NULL AS SCHOOL_DISTRICT_NAME,
-FROM `tcc-research.nc_sources.20250503_nc_voter_registration` a LEFT JOIN county_fips_map b ON a.county_desc = b.COUNTY_NAME
+FROM `tcc-research.nc_sources.20250426_nc_voter_registration` a LEFT JOIN county_fips_map b ON a.county_desc = b.COUNTY_NAME
 WHERE voter_status_desc IN ('ACTIVE', 'INACTIVE')
 ), dupes AS(
 

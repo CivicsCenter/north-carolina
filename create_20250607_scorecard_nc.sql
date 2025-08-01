@@ -1,5 +1,8 @@
-CREATE OR REPLACE TABLE `nc_production.20250607_scorecard_nc` AS
+-- This query creates the production table for the NC scorecard, from the source voter registration table
+-- For each new voter file, update source table name
 
+CREATE OR REPLACE TABLE `nc_production.20250607_scorecard_nc` AS
+ 
 WITH county_fips_map AS (
   SELECT 'ALAMANCE' AS COUNTY_NAME, '001' AS COUNTY_FIPS UNION ALL
   SELECT 'ALEXANDER', '003' UNION ALL
@@ -101,54 +104,38 @@ WITH county_fips_map AS (
   SELECT 'WILSON', '195' UNION ALL
   SELECT 'YADKIN', '197' UNION ALL
   SELECT 'YANCEY', '199'
-),
 
-voters AS (
-  SELECT 
-    ncid AS VOTER_ID,
-    voter_status_desc AS VOTER_STATUS,
-    party_cd AS PARTY,
-    SAFE.PARSE_DATE('%m/%d/%Y', registr_dt) AS LATEST_REGISTRATION_DATE,
-    birth_year AS YEAR_OF_BIRTH,
-    CASE
-      WHEN gender_code = 'M' THEN 'M'
-      WHEN gender_code = 'F' THEN 'F'
-      ELSE 'U'
-    END AS GENDER,
-    county_desc AS COUNTY_NAME,
-    res_city_desc AS RESIDENCE_CITY,
-    state_cd AS RESIDENCE_STATE,
-    zip_code AS RESIDENCE_ZIP,
-    mail_city AS MAILING_CITY,
-    mail_state AS MAILING_STATE,
-    race_code AS RACE,
-    ethnic_code AS ETHNICITY,
-    municipality_desc AS MUNICIPALITY,
-    cong_dist_abbrv AS CONGRESSIONAL_DISTRICT,
-    nc_senate_abbrv AS NC_SENATE_DISTRICT,
-    nc_house_abbrv AS NC_HOUSE_DISTRICT,
-    school_dist_desc AS SCHOOL_DISTRICT_NAME
-  FROM `tcc-research.nc_sources.20250607_nc_voter_registration_and_history`
-  WHERE voter_status_desc IN ('ACTIVE', 'INACTIVE')
-),
 
-voter_file_county AS (
-  SELECT 
-    37 AS STATE_FIPS,  -- Added the STATE_FIPS column here
-    v.*,
-    cf.COUNTY_FIPS,
-    NULL AS SCHOOL_DISTRICT_CODE
-  FROM voters v
-  LEFT JOIN county_fips_map cf 
-    ON TRIM(v.COUNTY_NAME) = cf.COUNTY_NAME
-  WHERE v.VOTER_ID IS NOT NULL
+), full_voter_file AS(
+SELECT 
+  ncid AS VOTER_ID,
+  voter_status_desc AS VOTER_STATUS,
+  party_cd AS PARTY,
+  NULL AS DATE_OF_BIRTH,
+  CAST(birth_year AS INTEGER) AS YEAR_OF_BIRTH,
+  CASE
+    WHEN gender_code = "M" THEN "M"
+    WHEN gender_code = "F" THEN "F"
+    ELSE "U" 
+  END AS GENDER,
+  SAFE.PARSE_DATE('%m/%d/%Y', registr_dt) AS LATEST_REGISTRATION_DATE,
+  '37' AS STATE_FIPS,
+  COUNTY_FIPS,
+  TRIM(UPPER(county_desc)) AS COUNTY_NAME,
+  NULL AS SCHOOL_DISTRICT_CODE,
+  NULL AS SCHOOL_DISTRICT_NAME,
+FROM `tcc-research.nc_sources.20250607_nc_voter_registration` a LEFT JOIN county_fips_map b ON a.county_desc = b.COUNTY_NAME
+WHERE voter_status_desc IN ('ACTIVE', 'INACTIVE')
+), dupes AS(
+
+-- File has *near* duplicates, arbitrarily take first one 
+
+SELECT
+*,
+ROW_NUMBER() OVER(PARTITION BY VOTER_ID) as N_VOTER_ID
+FROM full_voter_file
+
 )
 
--- Deduplicate: keep most recent registration
-SELECT *
-FROM (
-  SELECT * ,
-         ROW_NUMBER() OVER (PARTITION BY VOTER_ID ORDER BY LATEST_REGISTRATION_DATE DESC) AS rn
-  FROM voter_file_county
-)
-WHERE rn = 1;
+SELECT * EXCEPT (N_VOTER_ID) FROM dupes WHERE N_VOTER_ID <=1;
+
